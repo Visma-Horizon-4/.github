@@ -40,7 +40,7 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
-          source-url: https://npm.pkg.github.com/${{ inputs.repository-owner }}/index.json
+          source-url: https://nuget.pkg.github.com/${{ inputs.repository-owner }}/index.json
         env:
           NUGET_AUTH_TOKEN: ${{ secrets.NUGET_AUTH_TOKEN || secrets.GITHUB_TOKEN }}
 
