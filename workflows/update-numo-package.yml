@@ -1,0 +1,91 @@
+name: Reusable Numo Package Update
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: 'Package name to update'
+        required: true
+        type: string
+      version:
+        description: 'New version of the package'
+        required: true
+        type: string
+      dotnet-version:
+        description:  '.NET SDK version to use'
+        required: false
+        type: string
+        default: '8.0.x'
+      repository-owner:
+        description: 'Repository owner for GitHub Packages source'
+        required: false
+        type: string
+        default: 'Visma-Horizon-4'
+    secrets:
+      NUGET_AUTH_TOKEN:
+        description:  'Token for NuGet authentication (defaults to GITHUB_TOKEN)'
+        required: false
+
+jobs:
+  update-dep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+          source-url: https://npm.pkg.github.com/${{ inputs.repository-owner }}/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.NUGET_AUTH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Update Package in .csproj files
+        env:
+          PACKAGE_NAME: ${{ inputs.package }}
+          NEW_VERSION: ${{ inputs.version }}
+          NUGET_AUTH_TOKEN: ${{ secrets.NUGET_AUTH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔎 searching for projects referencing $PACKAGE_NAME..."
+          
+          # 1. Find all .csproj files
+          # 2. grep to see if they contain the PackageReference (ignoring case)
+          # 3. If found, run 'dotnet add package' to safely update the XML
+          
+          find . -name "*.csproj" -print0 | while IFS= read -r -d '' file; do
+            if grep -iq "Include=\"$PACKAGE_NAME\"" "$file"; then
+              echo "🚀 Updating $file..."
+              dotnet add "$file" package "$PACKAGE_NAME" --version "$NEW_VERSION" --no-restore
+            else
+              echo "⏭️ Skipping $file (Package not found)"
+            fi
+          done
+
+      - name: Check for changes
+        id: git_check
+        run: |
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+            echo "No changes needed."
+          fi
+
+      - name: Create Pull Request
+        if: steps.git_check.outputs.changes_detected == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update ${{ inputs.package }} to ${{ inputs.version }}"
+          branch: "auto-bump/${{ inputs.package }}"
+          delete-branch: true
+          title: "Update ${{ inputs.package }} to ${{ inputs.version }}"
+          body: |
+            Triggered automatically via TeamCity release.
+            
+            - **Package:** `${{ inputs.package }}`
+            - **New Version:** `${{ inputs.version }}`
