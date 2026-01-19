@@ -65,6 +65,20 @@ jobs:
             fi
           done
 
+      - name: Restore and Update Lock Files
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.NUGET_AUTH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "♻️ Restoring dependencies and updating lock files..."
+          # --force-evaluate is crucial here to ensure the lock file is regenerated
+          dotnet restore --force-evaluate
+
+      - name: Verify Build
+        run: |
+          echo "🏗️ Verifying solution build..."
+          # If this fails, the workflow stops here and no PR is created
+          dotnet build --configuration Release --no-restore
+
       - name: Check for changes
         id: git_check
         run: |
